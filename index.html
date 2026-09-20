@@ -86,20 +86,20 @@
 <aside class="hud panel right settings hidden" id="settings">
   <div class="p-head">FORCES</div>
   <div class="s-row">
-    <div class="s-label"><span>CENTER FORCE</span><span class="s-val" id="v-center">20</span></div>
-    <input type="range" id="sl-center" min="0" max="100" step="1" aria-label="center force">
+    <div class="s-label"><span>CENTER FORCE</span><span class="s-val" id="v-center">0.2</span></div>
+    <input type="range" id="sl-center" min="0" max="1" step="0.01" aria-label="center force">
   </div>
   <div class="s-row">
-    <div class="s-label"><span>REPEL FORCE</span><span class="s-val" id="v-repel">50</span></div>
-    <input type="range" id="sl-repel" min="0" max="100" step="1" aria-label="repel force">
+    <div class="s-label"><span>REPEL FORCE</span><span class="s-val" id="v-repel">7.5</span></div>
+    <input type="range" id="sl-repel" min="0" max="20" step="0.5" aria-label="repel force">
   </div>
   <div class="s-row">
-    <div class="s-label"><span>LINK FORCE</span><span class="s-val" id="v-linkforce">30</span></div>
-    <input type="range" id="sl-linkforce" min="0" max="100" step="1" aria-label="link force">
+    <div class="s-label"><span>LINK FORCE</span><span class="s-val" id="v-linkforce">1</span></div>
+    <input type="range" id="sl-linkforce" min="0" max="1" step="0.01" aria-label="link force">
   </div>
   <div class="s-row">
-    <div class="s-label"><span>LINK DISTANCE</span><span class="s-val" id="v-linkdist">90</span></div>
-    <input type="range" id="sl-linkdist" min="20" max="400" step="5" aria-label="link distance">
+    <div class="s-label"><span>LINK DISTANCE</span><span class="s-val" id="v-linkdist">70</span></div>
+    <input type="range" id="sl-linkdist" min="30" max="500" step="5" aria-label="link distance">
   </div>
   <div class="p-sub">DEPTH OF CONNECTION</div>
   <div class="s-row">
@@ -135,6 +135,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

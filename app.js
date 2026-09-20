@@ -99,13 +99,15 @@ raycaster.params.Points = { threshold: 14 };
 let hovered = null, selected = null, showLabels = false, degMap = new Map();
 
 /* force parameters (user-tunable via FORCES panel; persisted in localStorage) */
-const PHYS_DEFAULTS = { center: 0.004, repel: 2600, linkForce: 0.015, linkDist: 90,
+const PHYS_DEFAULTS = { center: 0.002, repel: 3000, linkForce: 0.02, linkDist: 70,
                         fade: 0.7, nodeSize: 1.0, linkOpacity: 0.38 };
 const PHYS_SCALES = {
-  center:    { min: 0, max: 100, toPhys: v => v / 10000, fromPhys: p => Math.round(p * 10000) },
-  repel:     { min: 0, max: 100, toPhys: v => v * 52,       fromPhys: p => Math.round(p / 52) },
-  linkForce: { min: 0, max: 100, toPhys: v => v / 3333,     fromPhys: p => Math.round(p * 3333) },
-  linkDist:  { min: 20, max: 400, toPhys: v => v,            fromPhys: p => Math.round(p) },
+  // display values follow Obsidian's ranges: center 0-1, repel 0-20, linkForce 0-1, distance 30-500
+  // toPhys converts display -> engine units used by tick()
+  center:    { toPhys: v => v * 0.01,  fromPhys: p => +(p / 0.01).toFixed(2) },
+  repel:     { toPhys: v => v * 400,   fromPhys: p => +(p / 400).toFixed(1) },
+  linkForce: { toPhys: v => v * 0.02,  fromPhys: p => +(p / 0.02).toFixed(2) },
+  linkDist:  { toPhys: v => v,         fromPhys: p => Math.round(p) },
 };
 let phys = loadPhys();
 function loadPhys() {
@@ -158,7 +160,9 @@ function build(g) {
   // sim state
   const N = g.nodes.length;
   sim = { pos: new Float32Array(N * 3), vel: new Float32Array(N * 3), fixed: new Uint8Array(N), N,
-          alpha: 1.0, frozen: false };
+          alpha: 1.0, frozen: false,
+          deg: new Float32Array(N) };
+  g.nodes.forEach((n, i) => { sim.deg[i] = Math.max(1, n.degree); });
   const R = Math.max(120, Math.cbrt(N) * 55);
   g.nodes.forEach((n, i) => {
     const a = Math.random() * Math.PI * 2, b = Math.acos(2 * Math.random() - 1), r = R * Math.cbrt(Math.random());
@@ -308,12 +312,17 @@ function tick(dt) {
     vel[j*3]-=dx*f; vel[j*3+1]-=dy*f; vel[j*3+2]-=dz*f;
   }
 
-  // springs
+  // springs — degree-scaled strength: links into high-degree hubs pull gently,
+  // links between peers pull firmly. This is what lets local clusters form
+  // spheres instead of everything collapsing into the mega-hub.
+  const hubCap = window.__vgHubCap || 6; // max spring-weakening factor for hub links
   for (const l of G.links) {
     const i = idx(l.source), j = idx(l.target);
     let dx = pos[j*3]-pos[i*3], dy = pos[j*3+1]-pos[i*3+1], dz = pos[j*3+2]-pos[i*3+2];
     const d = Math.sqrt(dx*dx+dy*dy+dz*dz)+1e-6;
-    const f = (d - REST) * SPRING * a * 0.5;
+    const minDeg = Math.min(sim.deg[i], sim.deg[j]);
+    const strength = SPRING * a * 0.5 / Math.min(hubCap, minDeg);
+    const f = (d - REST) * strength;
     dx/=d; dy/=d; dz/=d;
     vel[i*3]+=dx*f; vel[i*3+1]+=dy*f; vel[i*3+2]+=dz*f;
     vel[j*3]-=dx*f; vel[j*3+1]-=dy*f; vel[j*3+2]-=dz*f;
