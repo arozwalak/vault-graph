@@ -1,0 +1,13 @@
+# runtime state
+defaults.json
+
+# dev environment
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# logs
+*.log
