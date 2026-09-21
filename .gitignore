@@ -1,6 +1,9 @@
 # runtime state
 defaults.json
 
+# local config (contains user's vault path)
+.env
+
 # dev environment
 .venv/
 __pycache__/

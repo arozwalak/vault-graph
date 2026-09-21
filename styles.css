@@ -83,7 +83,7 @@ body {
 /* side panels */
 .panel { width: 250px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .panel.left { left: 22px; top: 108px; bottom: 90px; }
-.panel.right { right: 22px; top: 108px; max-height: calc(100vh - 200px); }
+.panel.right { right: 76px; top: 108px; max-height: calc(100vh - 200px); } /* right edge clear of the 3-icon stack (icons: 24..62px from right) */
 .panel.hidden { display: none; }
 .p-head {
   font-size: 11px; letter-spacing: 4px; color: var(--accent);
@@ -172,15 +172,41 @@ body {
 #gear-stack { position: fixed; top: 70px; right: 24px; z-index: 15; display: flex; flex-direction: column; gap: 10px; }
 #gear-stack .gear { position: static; }
 
-/* force settings panel — sits BELOW the icon stack, scrolls when content overflows */
+/* force settings panel — same row as inspect, stacked ON TOP of it (z-index 12 > .hud 10);
+   scrolls when content overflows */
 .panel.settings {
-  top: 214px; gap: 14px; z-index: 12;
+  top: 108px; gap: 14px; z-index: 12;
   max-height: calc(100vh - 260px);
   overflow-y: auto; overscroll-behavior: contain;
 }
 .s-row { display: flex; flex-direction: column; gap: 4px; }
 .s-label { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; letter-spacing: 2px; color: var(--ink); }
 .s-val { font-family: 'Share Tech Mono', monospace; color: var(--accent); }
+
+/* per-node hide (inspect panel) */
+.i-hide {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; letter-spacing: 2px; color: var(--ink);
+  cursor: pointer; user-select: none;
+}
+.i-hide input { accent-color: #64d8ff; cursor: pointer; }
+.i-hide:hover { color: var(--accent); }
+
+/* filter toggles (T8) */
+.f-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.f-label { font-size: 11px; letter-spacing: 2px; color: var(--ink); }
+.ftoggle {
+  flex: none; width: 36px; height: 18px; border-radius: 9px;
+  background: rgba(30, 60, 90, 0.6); border: 1px solid var(--edge);
+  cursor: pointer; position: relative; transition: all .15s;
+}
+.ftoggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--ink-dim); transition: all .15s;
+}
+.ftoggle.on { background: rgba(100,216,255,0.3); border-color: var(--accent); }
+.ftoggle.on::after { left: 20px; background: #eaffff; box-shadow: 0 0 8px var(--accent); }
 
 /* sliders */
 input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; cursor: pointer; }
@@ -236,6 +262,25 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
   background: linear-gradient(135deg, transparent 45%, var(--accent-dim) 45%, var(--accent-dim) 55%, transparent 55%),
               linear-gradient(135deg, transparent 65%, var(--accent-dim) 65%, var(--accent-dim) 75%, transparent 75%);
 }
+/* multi-window note windows */
+.nm-save { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--accent); margin-left: auto; margin-right: 8px; letter-spacing: 1px; }
+.nm-edit-btn {
+  background: none; border: 1px solid var(--edge); color: var(--accent);
+  font-family: 'Rajdhani', system-ui, sans-serif; font-size: 10px; letter-spacing: 2px;
+  padding: 3px 8px; cursor: pointer; margin-right: 6px;
+}
+.nm-edit-btn:hover { border-color: var(--accent); }
+.nm-edit-btn.on { background: rgba(100,216,255,0.15); border-color: var(--accent); }
+.nm-edit {
+  width: 100%; height: 100%; resize: none; border: none; outline: none;
+  background: transparent; color: var(--ink);
+  font-family: 'Share Tech Mono', monospace; font-size: 13px; line-height: 1.55;
+  padding: 12px 14px; box-sizing: border-box;
+}
+.wl { cursor: pointer; border-bottom: 1px dashed var(--accent-dim); }
+.wl:hover { color: var(--accent); text-shadow: 0 0 6px var(--accent-dim); }
+.wl-broken { opacity: 0.45; border-bottom-style: dotted; cursor: not-allowed; }
+
 .nm-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-dim); letter-spacing: 3px; font-size: 11px; }
 
 /* hover tooltip */
@@ -277,3 +322,52 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--accent-dim); }
 ::-webkit-scrollbar-track { background: transparent; }
+/* groups (T9) */
+.g-add { display: flex; gap: 6px; margin: 6px 0; }
+.g-add input {
+  flex: 1; min-width: 0; background: rgba(10,25,45,0.55); border: 1px solid var(--edge);
+  color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 12px;
+  padding: 5px 8px; border-radius: 4px; outline: none;
+}
+.g-add input:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(100,216,255,0.25); }
+button.mini {
+  flex: none; width: 26px; height: 26px; border-radius: 4px; cursor: pointer;
+  background: rgba(100,216,255,0.15); border: 1px solid var(--accent); color: var(--accent);
+  font-size: 15px; line-height: 1;
+}
+button.mini:hover { background: rgba(100,216,255,0.3); }
+.g-row {
+  display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 11px;
+  font-family: 'Share Tech Mono', monospace; color: var(--ink);
+}
+.g-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 6px currentColor; background: currentColor; }
+.g-key { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-count { flex: none; color: var(--ink-dim); }
+.g-row button {
+  flex: none; background: none; border: none; color: var(--ink-dim); cursor: pointer;
+  font-size: 13px; padding: 0 2px;
+}
+.g-row button:hover { color: #ff6b6b; }
+.g-pick { flex: none; width: 18px; height: 18px; padding: 0; border: none; background: none; cursor: pointer; border-radius: 3px; }
+.g-pick::-webkit-color-swatch-wrapper { padding: 0; }
+.g-pick::-webkit-color-swatch { border: 1px solid var(--edge); border-radius: 3px; }
+
+
+.g-pick { flex: none; width: 18px; height: 18px; padding: 0; border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; }
+
+/* custom color picker popup */
+.cp-pop {
+  position: fixed; z-index: 200; width: 180px; padding: 10px;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+  backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.cp-sv { position: relative; width: 100%; height: 110px; border-radius: 5px; cursor: crosshair; }
+.cp-cursor { position: absolute; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 4px rgba(0,0,0,.6); }
+.cp-h { position: relative; width: 100%; height: 12px; margin-top: 8px; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.cp-hcursor { position: absolute; top: -2px; width: 4px; height: 16px; border: 2px solid #fff; border-radius: 2px; transform: translateX(-50%); pointer-events: none; box-shadow: 0 0 4px rgba(0,0,0,.6); }
+.cp-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.cp-prev { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--edge); flex: none; }
+.cp-hex { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--ink); }

@@ -6,7 +6,7 @@
 <title>VAULT · GRAPHR</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%2364d8ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%2364d8ff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 <canvas id="scene"></canvas>
@@ -67,20 +67,16 @@
   <div id="i-name" class="i-name"></div>
   <div id="i-folder" class="i-folder"></div>
   <div id="i-tags" class="i-tags"></div>
+  <label class="i-hide" title="hide this node and its links from the graph (also removes its forces)">
+    <input type="checkbox" id="i-hidden"><span>HIDDEN</span>
+  </label>
   <div class="p-sub">LINKED (<span id="i-deg"></span>)</div>
   <ul id="i-links"></ul>
   <button id="i-open" class="cta">OPEN ▸</button>
 </aside>
 
 <!-- note content modal (T5): draggable by topbar, resizable via corner -->
-<div id="note-modal" class="note-modal hidden">
-  <div class="nm-top" id="nm-top">
-    <span id="nm-title" class="nm-title">NOTE</span>
-    <button id="nm-close" class="nm-x" title="close">✕</button>
-  </div>
-  <div class="nm-body" id="nm-body"></div>
-  <div class="nm-resize" id="nm-resize" title="resize"></div>
-</div>
+<!-- note windows are created dynamically (multi-window) -->
 
 <!-- right panel: force settings -->
 <aside class="hud panel right settings hidden" id="settings">
@@ -91,7 +87,7 @@
   </div>
   <div class="s-row">
     <div class="s-label"><span>REPEL FORCE</span><span class="s-val" id="v-repel">7.5</span></div>
-    <input type="range" id="sl-repel" min="0" max="20" step="0.5" aria-label="repel force">
+    <input type="range" id="sl-repel" min="0" max="100" step="0.5" aria-label="repel force">
   </div>
   <div class="s-row">
     <div class="s-label"><span>LINK FORCE</span><span class="s-val" id="v-linkforce">1</span></div>
@@ -117,9 +113,19 @@
     <input type="range" id="sl-nodesize" min="30" max="500" step="5" aria-label="node size">
   </div>
   <div class="s-row">
+    <div class="s-label"><span>LABEL SIZE</span><span class="s-val" id="v-labelsize">100</span></div>
+    <input type="range" id="sl-labelsize" min="30" max="300" step="5" aria-label="label size">
+  </div>
+  <div class="s-row">
     <div class="s-label"><span>LINK THICKNESS</span><span class="s-val" id="v-linkop">38</span></div>
     <input type="range" id="sl-linkop" min="5" max="100" step="1" aria-label="link thickness">
   </div>
+  <div class="p-sub">FILTERS</div>
+      <div class="f-row"><span class="f-label">EXISTING FILES ONLY</span><button id="tg-existing" class="ftoggle" aria-label="toggle existing files only"></button></div>
+  <div class="f-row"><span class="f-label">SHOW ORPHANS</span><button id="tg-orphans" class="ftoggle on" aria-label="toggle orphans"></button></div>
+  <div class="p-sub">GROUPS</div>
+  <div class="g-add"><input id="inp-group" placeholder="tag:#note / path:Templates" spellcheck="false"><button id="btn-add-group" class="mini" title="add group">+</button></div>
+  <div id="g-list"></div>
   <div class="hint">changes re-run the layout live, then re-freeze</div>
   <button id="btn-save-phys" class="cta">SAVE AS DEFAULT</button>
   <button id="btn-reset-phys" class="cta">RESET SESSION</button>
@@ -135,6 +141,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
