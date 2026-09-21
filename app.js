@@ -257,7 +257,7 @@ function makeLabelLayer(g) {
     x.fillText(n.name, 9, 33);
     const tex = new THREE.CanvasTexture(c2); tex.minFilter = THREE.LinearFilter;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    sp.scale.set(w * 0.5, 23, 1); sp.userData.nodeId = n.id;
+    sp.scale.set(w * 0.2, 9.2, 1); sp.userData.nodeId = n.id;
     scene.add(sp); labelSprites.push(sp);
   }
 }
@@ -621,7 +621,7 @@ slFade.oninput = () => {
   savePhys(); applyDisplay();
 };
 slNodeSize.oninput = () => {
-  phys.nodeSize = parseInt(slNodeSize.value, 10) / 100;
+  phys.nodeSize = parseInt(slNodeSize.value, 10) / 50;
   document.getElementById('v-nodesize').textContent = slNodeSize.value;
   savePhys(); applyDisplay();
 };
@@ -633,7 +633,7 @@ slLinkOp.oninput = () => {
 function syncDisplaySliders() {
   slFade.value = Math.round(phys.fade * 100);
   document.getElementById('v-fade').textContent = slFade.value;
-  slNodeSize.value = Math.round(phys.nodeSize * 100);
+  slNodeSize.value = Math.round(phys.nodeSize * 50);
   document.getElementById('v-nodesize').textContent = slNodeSize.value;
   slLinkOp.value = Math.round(phys.linkOpacity * 100);
   document.getElementById('v-linkop').textContent = slLinkOp.value;
@@ -878,7 +878,7 @@ function frame(now) {
       if (sim.hidden && sim.hidden.has(sp.userData.nodeId)) { sp.visible = false; continue; }
       const x = sim.pos[i*3], y = sim.pos[i*3+1], z = sim.pos[i*3+2];
       sp.position.set(x, y + 14, z);
-      // label fade by distance to viewer (T4): closer = bright, farther = faded out
+      // distance fade: nearest third bright, farther faded out (zoom-relative)
       const dx = x - camera.position.x, dy = y - camera.position.y, dz = z - camera.position.z;
       const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
       const t0 = Math.min(1, Math.max(0, (d - fadeNear) / (fadeFar - fadeNear)));
