@@ -63,8 +63,17 @@ body {
 .stat .k { font-size: 9px; letter-spacing: 2px; color: var(--ink-dim); }
 .stat .v { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: var(--accent); text-shadow: 0 0 8px var(--accent-dim); }
 .tools { display: flex; gap: 8px; align-items: center; }
+.search-wrap { position: relative; display: inline-flex; align-items: center; }
+.search-clear {
+  position: absolute; right: 6px;
+  background: none; border: none; color: var(--ink-dim);
+  font-size: 12px; cursor: pointer; padding: 2px 4px; line-height: 1;
+  display: none;
+}
+.search-clear:hover { color: var(--accent); text-shadow: 0 0 6px var(--accent-dim); }
+.search-wrap.has-text .search-clear { display: block; }
 #search {
-  width: 170px; background: rgba(10, 30, 48, 0.7);
+  width: 170px; padding-right: 24px; background: rgba(10, 30, 48, 0.7);
   border: 1px solid var(--edge); color: var(--ink);
   font-family: 'Rajdhani', sans-serif; font-size: 13px; letter-spacing: 1px;
   padding: 6px 10px; outline: none; transition: border-color .2s, box-shadow .2s;

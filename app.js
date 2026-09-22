@@ -1017,6 +1017,16 @@ function applyFilters() {
   applyFocus();
 }
 searchEl.oninput = applyFilters;
+/* clear (✕) button in the search box: appears when there's text, restores full graph */
+const searchWrap = searchEl.closest('.search-wrap');
+const searchClear = document.getElementById('search-clear');
+searchEl.addEventListener('input', () => searchWrap.classList.toggle('has-text', !!searchEl.value));
+searchClear.onclick = () => {
+  searchEl.value = '';
+  searchWrap.classList.remove('has-text');
+  applyFilters();
+  searchEl.focus();
+};
 
 /* ===== GROUPS (Obsidian-style, T9) =====
    key format: "tag:#note" | "path:Templates" | "<property>:<value>"
