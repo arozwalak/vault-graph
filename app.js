@@ -709,10 +709,14 @@ async function openNoteModal(n) {
     <div class="nm-body"></div>
     <div class="nm-resize" title="resize"></div>`;
   document.body.appendChild(el);
-  // cascade position
+  // cascade position, starting beside the FOLDERS panel (not on top of it)
   const idx = noteWins.length;
-  el.style.left = (60 + (idx % 6) * 34) + 'px';
-  el.style.top = (120 + (idx % 6) * 30) + 'px';
+  const foldersPanel = document.querySelector('.panel.left');
+  const panelOpen = foldersPanel && !foldersPanel.classList.contains('hidden') && foldersPanel.offsetWidth > 0;
+  const baseLeft = panelOpen ? foldersPanel.getBoundingClientRect().right + 16 : 22;
+  const left = baseLeft + (idx % 6) * 34;
+  el.style.left = Math.max(0, Math.min(left, innerWidth - el.offsetWidth - 8)) + 'px';
+  el.style.top = (108 + (idx % 6) * 30) + 'px';
   const w = { el, body: el.querySelector('.nm-body'), node: n, content: '', mode: 'view',
               dirty: false, saveTimer: null };
   noteWins.push(w);
