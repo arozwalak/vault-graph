@@ -91,7 +91,16 @@ let nodeMeshes = [];      // {mesh, label, node}
 let linkLines = [];
 let raycaster = new THREE.Raycaster();
 raycaster.params.Points = { threshold: 14 };
-let hovered = null, selected = null, showLabels = false, degMap = new Map();
+let hovered = null, selected = null, degMap = new Map();
+/* label toggle (LBL button); persisted in localStorage */
+let showLabels = loadShowLabels();
+function loadShowLabels() {
+  try { return localStorage.getItem('vg.labels') === '1'; }
+  catch (e) { return false; }
+}
+function saveShowLabels() {
+  try { localStorage.setItem('vg.labels', showLabels ? '1' : '0'); } catch (e) {}
+}
 
 /* force parameters (user-tunable via FORCES panel; persisted in localStorage) */
 const PHYS_DEFAULTS = { center: 0.002, repel: 3000, linkForce: 0.02, linkDist: 70,
@@ -899,8 +908,10 @@ function syncDisplaySliders() {
 }
 syncDisplaySliders();
 
-document.getElementById('btn-labels').onclick = e => {
-  showLabels = !showLabels; e.target.classList.toggle('on', showLabels); makeLabelLayer(G);
+const btnLabels = document.getElementById('btn-labels');
+btnLabels.classList.toggle('on', showLabels);
+btnLabels.onclick = () => {
+  showLabels = !showLabels; btnLabels.classList.toggle('on', showLabels); saveShowLabels(); makeLabelLayer(G);
 };
 document.getElementById('btn-reheat').onclick = () => {
   sim.alpha = 1.0; sim.frozen = false;
@@ -1183,7 +1194,7 @@ function stats() {
 }
 
 /* ---------- folder tree (T7) ---------- */
-/* collapsible tree of the vault's folder structure; click = include branch in filter */
+/* collapsible tree of the vault's folder structure; click = select branch only, shift+click = add/remove branch */
 let treeSel = new Set();       // selected folder paths (empty = all)
 let expandedDirs = new Set();  // expanded folder paths
 
@@ -1243,9 +1254,15 @@ function folderUI(g) {
     };
   });
   treeEl.querySelectorAll('.ft-row').forEach(r => {
-    r.onclick = () => {
+    r.onclick = e => {
       const p = r.dataset.f;
-      if (treeSel.has(p)) treeSel.delete(p); else treeSel.add(p);
+      if (e.shiftKey) {                       // shift = add/remove from multi-select
+        if (treeSel.has(p)) treeSel.delete(p); else treeSel.add(p);
+      } else if (treeSel.size === 1 && treeSel.has(p)) {
+        treeSel.clear();                      // click the lone selection again = show all
+      } else {
+        treeSel = new Set([p]);               // plain click = single select
+      }
       folderUI(G);
       applyFilters();
     };
