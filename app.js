@@ -100,6 +100,7 @@ function loadShowLabels() {
 }
 function saveShowLabels() {
   try { localStorage.setItem('vg.labels', showLabels ? '1' : '0'); } catch (e) {}
+  scheduleSync();
 }
 
 /* force parameters (user-tunable via FORCES panel; persisted in localStorage) */
@@ -140,20 +141,96 @@ function migratePhys(p) {
 }
 function savePhys() {
   try { localStorage.setItem('vault-graph-phys', JSON.stringify({ ...phys, __v: 2 })); } catch (e) {}
+  scheduleSync();
 }
 
-/* server-backed saved defaults (survive refresh AND devices) */
+/* ---------- vault-backed shared settings (survive refresh, browser, machine) ----------
+   /api/defaults GET/POST is the single source of truth; the doc lives at
+   <vault>/.vault-graph/settings.json and syncs across machines with the vault.
+   localStorage stays as an offline-cache fallback. Doc shape:
+   { phys:{...}, groups:[[key,color],...], hidden:[nodeId], labels:0|1 } */
+
+function snapshotSettings() {
+  const PHYS_KEYS = ["center", "repel", "linkForce", "linkDist", "fade", "nodeSize",
+                     "labelSize", "linkOpacity"];
+  return {
+    phys: Object.fromEntries(PHYS_KEYS.map(k => [k, +Number(phys[k]).toFixed(6)])),
+    groups: [...GROUPS.entries()],
+    hidden: [...manualHidden],
+    labels: showLabels ? 1 : 0,
+  };
+}
+
+let syncTimer = null;
+let adoptingSettings = false; // true during startup adoption: savers fire, we skip echo-syncs
+function scheduleSync() {
+  if (adoptingSettings) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncNow, 700);
+}
+
+async function syncNow() {
+  syncTimer = null;
+  try {
+    await fetch('/api/defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(snapshotSettings()),
+    });
+  } catch (e) {} /* offline: the localStorage cache already holds the state */
+}
+
+/* pagehide: flush a pending debounce so the last change before closing the tab
+   still reaches the vault (sendBeacon = guaranteed delivery during unload) */
+window.addEventListener('pagehide', () => {
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    navigator.sendBeacon('/api/defaults', JSON.stringify(snapshotSettings()));
+  }
+});
+
+/* startup: adopt the vault doc, or (when the vault has nothing in new format
+   yet) backfill from localStorage and push the merged state up — one-time
+   localStorage -> vault migration. */
 async function loadServerDefaults() {
   try {
     const r = await fetch('/api/defaults');
     const d = await r.json();
+    const p = (d && d.phys) || d;        // legacy files store phys keys flat
+    let sawServerData = false;
     for (const k of Object.keys(PHYS_DEFAULTS)) {
-      if (typeof d[k] === 'number' && isFinite(d[k])) phys[k] = d[k];
+      if (typeof p[k] === 'number' && isFinite(p[k])) { phys[k] = p[k]; sawServerData = true; }
+    }
+    if (Array.isArray(d.groups)) {
+      GROUPS.clear();
+      for (const [key, color] of d.groups) GROUPS.set(key, color);
+      sawServerData = true;
+    }
+    if (Array.isArray(d.hidden)) {
+      manualHidden = new Set(d.hidden);
+      sawServerData = sawServerData || d.hidden.length > 0;
+    }
+    if (d.labels !== undefined) {
+      showLabels = d.labels === 1;
+      sawServerData = true;
     }
     phys.showTags = true; phys.showAttachments = true; // toggles removed — always on
     migratePhys(phys); // saved server defaults may predate the linkForce rescale
-    savePhys();
+    // refresh the localStorage fallback cache from the adopted state
+    savePhys(); saveShowLabels(); saveGroups(); saveManualHidden();
     syncSliders(); syncDisplaySliders(); applyDisplay();
+    renderGroupList(); applyGroupColors();
+    if (showLabels) makeLabelLayer(G);
+    btnLabels.classList.toggle('on', showLabels);
+    applyFilters();
+    if (!sawServerData) {
+      // vault doc was empty/legacy-only: push localStorage-derived state up once
+      await fetch('/api/defaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshotSettings()),
+      });
+    }
   } catch (e) {}
 }
 async function saveServerDefaults() {
@@ -161,16 +238,10 @@ async function saveServerDefaults() {
     await fetch('/api/defaults', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(phys),
+      body: JSON.stringify(snapshotSettings()),
     });
-    const btn = document.getElementById('btn-save-phys');
-    const old = btn.textContent;
-    btn.textContent = 'SAVED ✓';
-    btn.disabled = true;
-    setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 1400);
   } catch (e) {}
 }
-loadServerDefaults();
 
 /* ---------- build scene from graph ---------- */
 function build(g) {
@@ -842,7 +913,15 @@ function onSlider(key, ev) {
 for (const d of SLIDER_DEFS) {
   document.getElementById(d.sl).addEventListener('input', ev => onSlider(d.key, ev));
 }
-document.getElementById('btn-save-phys').onclick = saveServerDefaults;
+/* save button: push to the vault immediately + show confirmation */
+document.getElementById('btn-save-phys').onclick = async () => {
+  await saveServerDefaults();
+  const btn = document.getElementById('btn-save-phys');
+  const old = btn.textContent;
+  btn.textContent = 'SAVED ✓';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 1400);
+};
 document.getElementById('btn-reset-phys').onclick = () => {
   phys = { ...PHYS_DEFAULTS };
   savePhys();
@@ -967,6 +1046,7 @@ function loadManualHidden() {
 }
 function saveManualHidden() {
   try { localStorage.setItem('vg.hidden', JSON.stringify([...manualHidden])); } catch (e) {}
+  scheduleSync();
 }
 
 function applyFilters() {
@@ -1053,7 +1133,10 @@ function loadGroups() {
   try { return new Map(JSON.parse(localStorage.getItem("vg.groups") || "[]")); }
   catch (e) { return new Map(); }
 }
-function saveGroups() { localStorage.setItem("vg.groups", JSON.stringify([...GROUPS.entries()])); }
+function saveGroups() {
+  try { localStorage.setItem("vg.groups", JSON.stringify([...GROUPS.entries()])); } catch (e) {}
+  scheduleSync();
+}
 
 function groupMemberIds(key) {
   const m = key.match(/^(tag|path):(.+)$/i);
@@ -1306,7 +1389,7 @@ async function load() {
 setInterval(() => {}, 1e9); // keep alive
 
 /* ---------- boot + loop ---------- */
-load();
+load().then(loadServerDefaults); // settings adopted after the graph exists
 
 let last = performance.now(), fpsT = 0, frames = 0;
 function frame(now) {

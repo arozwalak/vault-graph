@@ -10,6 +10,7 @@ Stdlib only. Endpoints:
 Vault path override: OBSIDIAN_VAULT env var.
 """
 import json
+import math
 import os
 import re
 import sys
@@ -227,8 +228,47 @@ def get_graph():
     return _graph_cache["data"]
 
 
-DEFAULTS_FILE = HERE / "defaults.json"
-ALLOWED_PHYS_KEYS = {"center", "repel", "linkForce", "linkDist", "fade", "nodeSize", "labelSize", "linkOpacity"}
+# Settings live INSIDE the vault (dot-dir, invisible to scan_vault) so iCloud syncs
+# them to every machine. Legacy project-dir defaults.json is a read-only fallback.
+DEFAULTS_FILE = Path(os.environ.get("VAULT_GRAPH_LEGACY_DEFAULTS", "")
+                     or (HERE / "defaults.json"))
+SETTINGS_DIR = VAULT / ".vault-graph"
+SETTINGS_FILE = SETTINGS_DIR / "settings.json"
+_ALLOWED_PHYS_KEYS = {"center", "repel", "linkForce", "linkDist", "fade", "nodeSize",
+                      "labelSize", "linkOpacity"}
+
+
+def sanitize_settings(doc):
+    """Validate a client-sent settings doc; returns it or raises ValueError."""
+    if not isinstance(doc, dict):
+        raise ValueError("doc must be an object")
+    phys = doc.get("phys", {})
+    if not isinstance(phys, dict):
+        raise ValueError("phys must be an object")
+    clean_phys = {k: float(v) for k, v in phys.items() if k in _ALLOWED_PHYS_KEYS}
+    try:
+        if not math.isfinite(sum(clean_phys.values())):
+            raise ValueError("non-finite phys value")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"bad phys: {e}")
+    groups = doc.get("groups", [])
+    if not isinstance(groups, list) or len(groups) > 500:
+        raise ValueError("bad groups")
+    for g in groups:
+        if not (isinstance(g, list) and len(g) == 2
+                and isinstance(g[0], str) and isinstance(g[1], str)
+                and len(g[0]) <= 200 and len(g[1]) <= 20):
+            raise ValueError("bad groups entry")
+    hidden = doc.get("hidden", [])
+    if not isinstance(hidden, list) or len(hidden) > 5000:
+        raise ValueError("bad hidden")
+    for h in hidden:
+        if not isinstance(h, str) or len(h) > 300:
+            raise ValueError("bad hidden entry")
+    labels = doc.get("labels", 0)
+    if labels not in (0, 1):
+        raise ValueError("labels must be 0 or 1")
+    return {"phys": clean_phys, "groups": groups, "hidden": hidden, "labels": labels}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -245,8 +285,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 data = json.loads(self.rfile.read(length) or b"{}")
-                clean = {k: float(data[k]) for k in ALLOWED_PHYS_KEYS if k in data}
-                DEFAULTS_FILE.write_text(json.dumps(clean))
+                clean = sanitize_settings(data)
+                SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+                SETTINGS_FILE.write_text(json.dumps(clean))
                 body = json.dumps({"ok": True, "saved": clean}).encode()
                 self.send_response(200)
             except Exception as e:
@@ -330,17 +371,22 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/api/defaults":
-            # shared saved defaults (server-side, survives refresh / browser / device)
-            if DEFAULTS_FILE.exists():
+            # shared settings: live in the vault (syncs to every machine via
+            # iCloud); legacy project-dir defaults.json is a read-only fallback
+            # on first upgrade. Always serves valid JSON.
+            body = None
+            for source in (SETTINGS_FILE, DEFAULTS_FILE):
                 try:
-                    body = DEFAULTS_FILE.read_bytes()
-                    self.send_response(200)
-                except OSError:
-                    body = json.dumps({}).encode()
-                    self.send_response(200)
-            else:
+                    if source.exists():
+                        raw = source.read_bytes() or b"{}"
+                        json.loads(raw)  # reject empty/corrupt files -> next source
+                        body = raw
+                        break
+                except (OSError, ValueError):
+                    continue
+            if body is None:
                 body = json.dumps({}).encode()
-                self.send_response(200)
+            self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
