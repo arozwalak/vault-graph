@@ -46,6 +46,8 @@ FULL_SETTINGS = {
     "groups": [["tag:#projects", "#ff7de9"], ["path:Templates", "#ffb84d"]],
     "hidden": ["note-a.md", "note-b.md"],
     "labels": 1,
+    "bookmarks": [{"id": "notes/a.md", "group": None}, {"id": "notes/b.md", "group": "Research"}],
+    "bookmarkGroups": ["Research", "Watch later"],
 }
 
 
@@ -87,6 +89,19 @@ class SettingsAPITests(unittest.TestCase):
     def test_post_rejects_bad_labels_value(self):
         bad = json.loads(json.dumps(FULL_SETTINGS))
         bad["labels"] = 7
+        status, _ = call("POST", f"{self.base}/api/defaults", bad)
+        self.assertEqual(status, 400)
+
+    def test_post_rejects_bad_bookmarks_entry(self):
+        bad = json.loads(json.dumps(FULL_SETTINGS))
+        bad["bookmarks"] = [{"id": "ok.md", "group": "Research"},
+                            {"group": "missing-id"}, "not-an-object"]
+        status, _ = call("POST", f"{self.base}/api/defaults", bad)
+        self.assertEqual(status, 400)
+
+    def test_post_rejects_bad_bookmark_group_name(self):
+        bad = json.loads(json.dumps(FULL_SETTINGS))
+        bad["bookmarkGroups"] = ["ok", 42]
         status, _ = call("POST", f"{self.base}/api/defaults", bad)
         self.assertEqual(status, 400)
 

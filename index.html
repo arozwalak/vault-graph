@@ -6,7 +6,7 @@
 <title>VAULT · GRAPHR</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%2364d8ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%2364d8ff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 <canvas id="scene"></canvas>
@@ -57,11 +57,15 @@
 </button>
 </div>
 
-<!-- left panel: folders -->
+<!-- left panel: folders / bookmarks (tabbed) -->
 <aside class="hud panel left">
-  <div class="p-head">FOLDERS</div>
+  <div class="p-tabs">
+    <button class="p-tab active" id="tab-folders" data-tab="folders">FOLDERS</button>
+    <button class="p-tab" id="tab-bookmarks" data-tab="bookmarks">BOOKMARKS</button>
+  </div>
   <div id="foldertree" class="ftree"></div>
-  <div class="hint">click = select · shift+click = add · triangle = expand</div>
+  <div id="bookmark-list" class="ftree hidden"></div>
+  <div class="hint" id="left-hint">click = select · shift+click = add · triangle = expand</div>
 </aside>
 
 <!-- right panel: inspector -->
@@ -70,9 +74,14 @@
   <div id="i-name" class="i-name"></div>
   <div id="i-folder" class="i-folder"></div>
   <div id="i-tags" class="i-tags"></div>
-  <label class="i-hide" title="hide this node and its links from the graph (also removes its forces)">
-    <input type="checkbox" id="i-hidden"><span>HIDDEN</span>
-  </label>
+  <div class="i-toggles">
+    <label class="i-hide" title="star this note — it shows in the BOOKMARKS tab (left panel)">
+      <input type="checkbox" id="i-bmark"><span>★ BOOKMARK</span>
+    </label>
+    <label class="i-hide" title="hide this node and its links from the graph (also removes its forces)">
+      <input type="checkbox" id="i-hidden"><span>HIDDEN</span>
+    </label>
+  </div>
   <div class="p-sub">LINKED (<span id="i-deg"></span>)</div>
   <ul id="i-links"></ul>
   <button id="i-open" class="cta">OPEN ▸</button>
@@ -144,6 +153,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

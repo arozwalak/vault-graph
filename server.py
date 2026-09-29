@@ -268,7 +268,25 @@ def sanitize_settings(doc):
     labels = doc.get("labels", 0)
     if labels not in (0, 1):
         raise ValueError("labels must be 0 or 1")
-    return {"phys": clean_phys, "groups": groups, "hidden": hidden, "labels": labels}
+    bookmarks = doc.get("bookmarks", [])
+    if not isinstance(bookmarks, list) or len(bookmarks) > 2000:
+        raise ValueError("bad bookmarks")
+    for b in bookmarks:
+        if not (isinstance(b, dict) and isinstance(b.get("id"), str)
+                and len(b["id"]) <= 300):
+            raise ValueError("bad bookmark entry")
+        grp = b.get("group")
+        if grp is not None and (not isinstance(grp, str) or len(grp) > 80):
+            raise ValueError("bad bookmark group ref")
+    bookmark_groups = doc.get("bookmarkGroups", [])
+    if not isinstance(bookmark_groups, list) or len(bookmark_groups) > 200:
+        raise ValueError("bad bookmarkGroups")
+    for name in bookmark_groups:
+        if not (isinstance(name, str) and name and len(name) <= 80):
+            raise ValueError("bad bookmarkGroups entry")
+    return {"phys": clean_phys, "groups": groups, "hidden": hidden, "labels": labels,
+            "bookmarks": [{"id": b["id"], "group": b.get("group")} for b in bookmarks],
+            "bookmarkGroups": bookmark_groups}
 
 
 class Handler(SimpleHTTPRequestHandler):

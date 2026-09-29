@@ -94,6 +94,7 @@ body {
 .panel.left { left: 22px; top: 108px; bottom: 90px; }
 .panel.right { right: 76px; top: 108px; max-height: calc(100vh - 200px); } /* right edge clear of the 3-icon stack (icons: 24..62px from right) */
 .panel.hidden { display: none; }
+.hidden { display: none; }
 .p-head {
   font-size: 11px; letter-spacing: 4px; color: var(--accent);
   border-bottom: 1px solid var(--edge); padding-bottom: 6px;
@@ -201,6 +202,58 @@ body {
 }
 .i-hide input { accent-color: #64d8ff; cursor: pointer; }
 .i-hide:hover { color: var(--accent); }
+.i-toggles { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+
+/* left panel tabs (FOLDERS | BOOKMARKS) */
+.p-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.p-tab {
+  flex: 1; padding: 7px 4px; font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; letter-spacing: 2px; color: var(--dim); cursor: pointer;
+  background: rgba(100,216,255,0.04); border: 1px solid rgba(100,216,255,0.15);
+  border-radius: 4px; transition: all .15s;
+}
+.p-tab:hover { color: var(--accent); border-color: rgba(100,216,255,0.35); }
+.p-tab.active { color: var(--accent); border-color: var(--accent); background: rgba(100,216,255,0.10); }
+
+/* bookmarks list (BOOKMARKS tab) */
+.bm-section { margin-bottom: 10px; }
+.bm-sec-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px;
+  color: var(--accent); opacity: 0.85; padding: 2px 0;
+}
+.bm-sec-head.del-cand { color: #ff7de9; opacity: 1; }
+.bm-del {
+  visibility: hidden; background: none; border: none; color: var(--dim);
+  cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px;
+}
+.bm-sec-head:hover .bm-del { visibility: visible; }
+.bm-sec-head.bm-droptarget { outline: 1px dashed var(--accent); outline-offset: 3px; }
+.bm-row {
+  display: flex; align-items: center; gap: 6px; padding: 2px 4px;
+  font-size: 11px; color: var(--ink); cursor: grab; border-radius: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bm-row:hover { background: rgba(100,216,255,0.08); color: var(--accent); }
+.bm-row.bm-droptarget { outline: 1px dashed var(--accent); outline-offset: 1px; }
+.bm-row .bm-x {
+  visibility: hidden; background: none; border: none; color: var(--dim);
+  cursor: pointer; font-size: 11px; padding: 0 2px; flex: none;
+}
+.bm-row:hover .bm-x { visibility: visible; }
+.bm-row.bm-missing { color: var(--dim); font-style: italic; }
+.bm-newgroup {
+  display: block; width: 100%; padding: 4px 0; margin-top: 2px;
+  background: none; border: 1px dashed rgba(100,216,255,0.25); border-radius: 4px;
+  color: var(--dim); font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; letter-spacing: 2px; cursor: pointer; transition: all .15s;
+}
+.bm-newgroup:hover, .bm-newgroup.bm-droptarget { color: var(--accent); border-color: var(--accent); }
+.bm-newgroup input {
+  width: 100%; background: none; border: none; outline: none; color: var(--accent);
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px;
+  text-align: center;
+}
 
 /* filter toggles (T8) */
 .f-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

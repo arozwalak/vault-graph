@@ -158,6 +158,8 @@ function snapshotSettings() {
     groups: [...GROUPS.entries()],
     hidden: [...manualHidden],
     labels: showLabels ? 1 : 0,
+    bookmarks: BOOKMARKS.map(b => ({ id: b.id, group: b.group || null })),
+    bookmarkGroups: [...BGROUPS],
   };
 }
 
@@ -214,12 +216,23 @@ async function loadServerDefaults() {
       showLabels = d.labels === 1;
       sawServerData = true;
     }
+    if (Array.isArray(d.bookmarks)) {
+      BOOKMARKS = d.bookmarks
+        .filter(b => b && typeof b.id === 'string')
+        .map(b => ({ id: b.id, group: (typeof b.group === 'string' && b.group) ? b.group : null }));
+      sawServerData = true;
+    }
+    if (Array.isArray(d.bookmarkGroups)) {
+      BGROUPS = d.bookmarkGroups.filter(x => typeof x === 'string' && x);
+      sawServerData = true;
+    }
     phys.showTags = true; phys.showAttachments = true; // toggles removed — always on
     migratePhys(phys); // saved server defaults may predate the linkForce rescale
     // refresh the localStorage fallback cache from the adopted state
-    savePhys(); saveShowLabels(); saveGroups(); saveManualHidden();
+    savePhys(); saveShowLabels(); saveGroups(); saveManualHidden(); saveBookmarks();
     syncSliders(); syncDisplaySliders(); applyDisplay();
     renderGroupList(); applyGroupColors();
+    renderBookmarks();
     if (showLabels) makeLabelLayer(G);
     btnLabels.classList.toggle('on', showLabels);
     applyFilters();
@@ -358,16 +371,19 @@ function makeLabelLayer(g) {
     labelIds.add(focusNode.id);
     for (const nb of neighborsOf(focusNode.id)) labelIds.add(nb);
   }
+  // bookmarked nodes get a star on their label
+  const bmSet = bookmarkedSet();
   for (const n of visible) {
     if (!labelIds.has(n.id)) continue;
     const c2 = document.createElement('canvas'); const x = c2.getContext('2d');
+    const lbl = bmSet.has(n.id) ? ('★ ' + n.name) : n.name;
     x.font = '600 30px "Rajdhani", system-ui, sans-serif';
-    const w = Math.ceil(x.measureText(n.name).width) + 18;
+    const w = Math.ceil(x.measureText(lbl).width) + 18;
     c2.width = w; c2.height = 46;
     x.font = '600 30px "Rajdhani", system-ui, sans-serif';
     x.fillStyle = 'rgba(150,225,255,0.95)';
     x.shadowColor = 'rgba(100,216,255,0.9)'; x.shadowBlur = 10;
-    x.fillText(n.name, 9, 33);
+    x.fillText(lbl, 9, 33);
     const tex = new THREE.CanvasTexture(c2); tex.minFilter = THREE.LinearFilter;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
     sp.scale.set(w * 0.2 * phys.labelSize, 9.2 * phys.labelSize, 1); sp.userData.nodeId = n.id; sp.userData.baseW = w;
@@ -553,6 +569,18 @@ function inspect(n) {
     if (hcb.checked && selected && selected.id === n.id) { selected = null; inspect(null); }
     applyFilters();
     reenergize(); // re-run forces so the layout relaxes without the hidden node's pull
+  };
+  const bcb = document.getElementById('i-bmark');
+  bcb.checked = BOOKMARKS.some(q => q.id === n.id);
+  bcb.onchange = () => {
+    if (bcb.checked) {
+      if (!BOOKMARKS.some(q => q.id === n.id)) BOOKMARKS.push({ id: n.id, group: null });
+    } else {
+      BOOKMARKS = BOOKMARKS.filter(q => q.id !== n.id);
+    }
+    saveBookmarks();
+    renderBookmarks();
+    makeLabelLayer(G);
   };
 }
 
@@ -1138,6 +1166,223 @@ function saveGroups() {
   scheduleSync();
 }
 
+/* ===== BOOKMARKS (flat groups, Obsidian-style drag; persisted in the vault doc) =====
+   BOOKMARKS: ordered [{id, group}] — array position is the list order;
+   BGROUPS: ordered group names. Flat means a bookmark sits in at most one group
+   or loose at the root of the list. */
+let BOOKMARKS = loadBookmarks();
+let BGROUPS = loadBookmarkGroups();
+function loadBookmarks() {
+  try { return JSON.parse(localStorage.getItem('vg.bookmarks') || "[]"); }
+  catch (e) { return []; }
+}
+function loadBookmarkGroups() {
+  try { return JSON.parse(localStorage.getItem('vg.bgroups') || "[]"); }
+  catch (e) { return []; }
+}
+function saveBookmarks() {
+  try {
+    localStorage.setItem('vg.bookmarks', JSON.stringify(BOOKMARKS));
+    localStorage.setItem('vg.bgroups', JSON.stringify(BGROUPS));
+  } catch (e) {}
+  scheduleSync();
+}
+const bookmarkedSet = () => new Set(BOOKMARKS.map(b => b.id));
+
+/* move one bookmark: splice it out, then insert (a) before beforeId's entry,
+   or (b) after the last member of `group` (or at the end for a fresh group) */
+function moveBookmark(id, group, beforeId) {
+  const i = BOOKMARKS.findIndex(q => q.id === id);
+  if (i < 0) return;
+  const [b] = BOOKMARKS.splice(i, 1);
+  let at;
+  if (group === undefined) group = b.group;
+  if (beforeId) {
+    at = BOOKMARKS.findIndex(q => q.id === beforeId);
+    if (at < 0) at = BOOKMARKS.length;
+  } else if (group != null) {
+    at = BOOKMARKS.length;  // fresh group with no members yet
+    for (let j = BOOKMARKS.length - 1; j >= 0; j--) {
+      if (BOOKMARKS[j].group === group) { at = j + 1; break; }
+    }
+  } else {
+    at = BOOKMARKS.length;  // ungrouped: keep members at the tail
+    for (let j = BOOKMARKS.length - 1; j >= 0; j--) {
+      if (!BOOKMARKS[j].group) { at = j + 1; break; }
+    }
+  }
+  b.group = group || null;
+  BOOKMARKS.splice(at, 0, b);
+  saveBookmarks();
+}
+
+/* ---- bookmarks panel (BOOKMARKS tab) + left-panel tabs ---- */
+function setLeftTab(tab) {
+  const isBm = tab === 'bookmarks';
+  document.getElementById('tab-folders').classList.toggle('active', !isBm);
+  document.getElementById('tab-bookmarks').classList.toggle('active', isBm);
+  document.getElementById('foldertree').classList.toggle('hidden', isBm);
+  document.getElementById('bookmark-list').classList.toggle('hidden', !isBm);
+  document.getElementById('left-hint').textContent = isBm
+    ? 'click row = jump to node · drag = move · × = remove'
+    : 'click = select · shift+click = add · triangle = expand';
+  try { localStorage.setItem('vg.leftTab', tab); } catch (e) {}
+}
+const tabFoldersBtn = document.getElementById('tab-folders');
+const tabBookmarksBtn = document.getElementById('tab-bookmarks');
+tabFoldersBtn.onclick = () => setLeftTab('folders');
+tabBookmarksBtn.onclick = () => setLeftTab('bookmarks');
+
+/* render the BOOKMARKS tab */
+function renderBookmarks() {
+  const el = document.getElementById('bookmark-list');
+  if (!el || !G) return;
+  for (const c of [...el.children]) c.remove();
+  const nodeOf = (id) => G.nodes[idMap.get(id)] || null;
+
+  const mkRow = (b) => {
+    const n = nodeOf(b.id);
+    const row = document.createElement('div');
+    row.className = 'bm-row' + (n ? '' : ' bm-missing');
+    row.draggable = true;
+    if (n) {
+      row.onclick = () => select(n);
+      row.textContent = n.name;
+    } else {
+      row.textContent = b.id.split('/').pop();
+      row.title = 'note no longer in vault';
+    }
+    const x = document.createElement('button');
+    x.className = 'bm-x';
+    x.textContent = '×';
+    x.onclick = (ev) => {
+      ev.stopPropagation();
+      BOOKMARKS = BOOKMARKS.filter(q => q.id !== b.id);
+      saveBookmarks();
+      renderBookmarks();
+    };
+    row.appendChild(x);
+    row._bmId = b.id;
+    return row;
+  };
+
+  const clearDrops = () => { for (const q of el.querySelectorAll('.bm-droptarget')) q.classList.remove('bm-droptarget'); };
+  const wireRow = (row, curGroup, beforeId) => {
+    row.addEventListener('dragstart', (ev) => {
+      ev.dataTransfer.setData('text/vg-bm', row._bmId);
+      ev.dataTransfer.setData('text/plain', row._bmId);
+      ev.dataTransfer.effectAllowed = 'move';
+      row.classList.add('bm-dragging');
+    });
+    row.addEventListener('dragend', () => { row.classList.remove('bm-dragging'); clearDrops(); });
+    row.addEventListener('dragover', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.dataTransfer.dropEffect = 'move';
+      row.classList.add('bm-droptarget');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('bm-droptarget'));
+    row.addEventListener('drop', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      clearDrops();
+      const id = ev.dataTransfer.getData('text/vg-bm');
+      if (id && id !== beforeId) {
+        moveBookmark(id, curGroup, beforeId);
+        renderBookmarks();
+      }
+    });
+  };
+
+  // ungrouped section
+  const looseSec = document.createElement('div');
+  looseSec.className = 'bm-section bm-loose';
+  const looseHead = document.createElement('div');
+  looseHead.className = 'bm-sec-head';
+  looseHead.textContent = 'UNGROUPED';
+  looseSec.appendChild(looseHead);
+  for (const b of BOOKMARKS.filter(q => !q.group)) {
+    const row = mkRow(b);
+    wireRow(row, null, b.id);
+    looseSec.appendChild(row);
+  }
+  looseSec.addEventListener('dragover', (ev) => {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    looseSec.classList.add('bm-droptarget');
+  });
+  looseSec.addEventListener('dragleave', () => looseSec.classList.remove('bm-droptarget'));
+  looseSec.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    clearDrops();
+    const id = ev.dataTransfer.getData('text/vg-bm');
+    if (id) {
+      moveBookmark(id, null, null);
+      renderBookmarks();
+    }
+  });
+  el.appendChild(looseSec);
+
+  // one section per group
+  for (const gname of BGROUPS) {
+    const sec = document.createElement('div');
+    sec.className = 'bm-section';
+    const head = document.createElement('div');
+    head.className = 'bm-sec-head';
+    head.textContent = gname;
+    const gx = document.createElement('button');
+    gx.className = 'bm-del';
+    gx.textContent = '×';
+    gx.onclick = () => {
+      BGROUPS = BGROUPS.filter(x => x !== gname);
+      for (const q of BOOKMARKS) if (q.group === gname) q.group = null;
+      saveBookmarks();
+      renderBookmarks();
+    };
+    head.appendChild(gx);
+    sec.appendChild(head);
+    for (const b of BOOKMARKS.filter(q => q.group === gname)) {
+      const row = mkRow(b);
+      wireRow(row, gname, b.id);
+      sec.appendChild(row);
+    }
+    sec.addEventListener('dragover', (ev) => {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      sec.classList.add('bm-droptarget');
+    });
+    sec.addEventListener('dragleave', () => sec.classList.remove('bm-droptarget'));
+    sec.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      clearDrops();
+      const id = ev.dataTransfer.getData('text/vg-bm');
+      if (id) {
+        moveBookmark(id, gname, null);
+        renderBookmarks();
+      }
+    });
+    el.appendChild(sec);
+  }
+
+  // + new group
+  const addRow = document.createElement('div');
+  addRow.className = 'bm-newgroup';
+  const inp = document.createElement('input');
+  inp.placeholder = '+ NEW GROUP';
+  inp.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && inp.value.trim()) {
+      const name = inp.value.trim();
+      if (!BGROUPS.includes(name)) {
+        BGROUPS.push(name);
+        saveBookmarks();
+      }
+      renderBookmarks();
+    }
+    if (ev.key === 'Escape') { inp.value = ''; inp.blur(); }
+  });
+  addRow.appendChild(inp);
+  el.appendChild(addRow);
+}
+
 function groupMemberIds(key) {
   const m = key.match(/^(tag|path):(.+)$/i);
   const out = new Set();
@@ -1571,5 +1816,21 @@ function hsvToRgb(h, s, v) {
   else [r, g, b] = [c, 0, x];
   return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
 }
+
+/* small console/E2E handle (read-only getters + a few actions) */
+window.VG = {
+  nodeCount: () => G ? G.nodes.length : 0,
+  getBookmarks: () => JSON.parse(JSON.stringify(BOOKMARKS)),
+  getBookmarkGroups: () => [...BGROUPS],
+  selectId: (id) => { const n = G.nodes[idMap.get(id)]; if (n) select(n); },
+  toggleBookmark: (id) => {
+    const i = BOOKMARKS.findIndex(q => q.id === id);
+    if (i >= 0) BOOKMARKS.splice(i, 1); else BOOKMARKS.push({ id, group: null });
+    saveBookmarks(); renderBookmarks(); makeLabelLayer(G);
+  },
+  moveBookmark: (id, group, beforeId) => { moveBookmark(id, group, beforeId); renderBookmarks(); },
+  addGroup: (name) => { if (name && !BGROUPS.includes(name)) { BGROUPS.push(name); saveBookmarks(); renderBookmarks(); } },
+  inspectOf: () => selected ? selected.id : null,
+};
 
 })();
