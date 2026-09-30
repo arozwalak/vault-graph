@@ -7,5 +7,5 @@ if [ ! -d "${VAULT_GRAPH_VAULT:-/Users/artur/Library/Mobile Documents/iCloud~md~
 fi
 PORT="${VAULT_GRAPH_PORT:-8777}"
 echo "vault-graph → http://localhost:$PORT"
-( sleep 1 && open "http://localhost:$PORT" ) &
+if [ -z "${VAULT_GRAPH_NO_OPEN:-}" ]; then ( sleep 1 && open "http://localhost:$PORT" ) & fi
 exec python3 server.py

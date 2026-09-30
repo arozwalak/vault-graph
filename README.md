@@ -45,6 +45,57 @@ Then open **http://localhost:8777** — or, since the server binds to `0.0.0.0` 
 
 Environment variables also work directly (`VAULT_GRAPH_VAULT=... python3 server.py`); a `.env` file in the project root (or its parent) is loaded automatically if present.
 
+## Run as a macOS service (launchd)
+
+Instead of running `run.sh` manually, a LaunchAgent keeps vault-graph alive: starts at login, restarts if the process dies, logs to files. Browser auto-open stays off unless you launch `run.sh` by hand (the service sets `VAULT_GRAPH_NO_OPEN=1`).
+
+Create `~/Library/LaunchAgents/cc.jarvis.vault-graph.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>cc.jarvis.vault-graph</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/path/to/vault-graph/run.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/vault-graph</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>VAULT_GRAPH_NO_OPEN</key>
+        <string>1</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>~/Library/Logs/vault-graph.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>~/Library/Logs/vault-graph.err.log</string>
+</dict>
+</plist>
+```
+
+Load and verify:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/cc.jarvis.vault-graph.plist
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8777   # → 200
+```
+
+Stop / restart / remove:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/cc.jarvis.vault-graph   # force restart
+launchctl bootout gui/$(id -u)/cc.jarvis.vault-graph        # stop (keep the plist for later)
+```
+
 ## API
 
 | Endpoint | Method | Purpose |
