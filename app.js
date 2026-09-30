@@ -43,7 +43,7 @@ function applyCamera() {
   camera.lookAt(ctl.target);
 }
 let drag = null, moved = 0;
-canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, b: e.button }; moved = 0; });
+canvas.addEventListener('pointerdown', e => { if (fly.on) return; drag = { x: e.clientX, y: e.clientY, b: e.button }; moved = 0; });
 addEventListener('pointermove', e => {
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -92,6 +92,7 @@ let linkLines = [];
 let raycaster = new THREE.Raycaster();
 raycaster.params.Points = { threshold: 14 };
 let hovered = null, selected = null, degMap = new Map();
+let focusHover = null; // hover-focus node, gated on Ctrl: plain hover = tooltip only (no flashing)
 /* label toggle (LBL button); persisted in localStorage */
 let showLabels = loadShowLabels();
 function loadShowLabels() {
@@ -366,7 +367,7 @@ function makeLabelLayer(g) {
   // selection focus: the selected node + every directly-connected node always get a
   // label, regardless of the degree cap — the highlighted neighborhood must be readable
   const focusNode = (selected && !(hidden && hidden.has(selected.id))) ? selected
-                  : (hovered && !hidden.has(hovered.id)) ? hovered : null;
+                  : (focusHover && !hidden.has(focusHover.id)) ? focusHover : null;
   if (focusNode) {
     labelIds.add(focusNode.id);
     for (const nb of neighborsOf(focusNode.id)) labelIds.add(nb);
@@ -502,31 +503,63 @@ function pick(ev) {
   return null;
 }
 canvas.addEventListener('pointermove', ev => {
+  if (fly.on) return;
   const n = pick(ev);
+  const fh = ev.ctrlKey ? n : null;
   hoverEl.style.left = Math.min(innerWidth - 340, ev.clientX + 16) + 'px';
   hoverEl.style.top = Math.min(innerHeight - 90, ev.clientY + 16) + 'px';
   if (n !== hovered) {
     hovered = n;
-    applyFocus();
-    if (!selected) makeLabelLayer(G); // hover focus labels (selection holds its own)
     canvas.style.cursor = n ? 'pointer' : 'grab';
     if (n) {
       hoverEl.style.display = 'block';
       hoverEl.innerHTML = `<b>${esc(n.name)}</b><span>${esc(n.folder)} · links: ${n.degree}${n.tags.length ? ' · #' + esc(n.tags.slice(0, 3).join(' #')) : ''}</span>`;
     } else hoverEl.style.display = 'none';
   }
+  if (fh !== focusHover || n !== hovered) { // ctrl state or node changed → refocus (ctrl down = lights up, up = dims)
+    const prev = focusHover;
+    focusHover = fh;
+    if (focusHover || prev) { applyFocus(); if (!selected) makeLabelLayer(G); }
+  }
 });
 canvas.addEventListener('pointerleave', () => {
-  if (hovered) { hovered = null; applyFocus(); if (!selected) makeLabelLayer(G); }
+  if (hovered) hovered = null;
+  if (focusHover) { focusHover = null; applyFocus(); if (!selected) makeLabelLayer(G); }
   hoverEl.style.display = 'none';
 });
 canvas.addEventListener('click', ev => {
+  if (fly.on) return;
   if (moved > 6) return; // it was a drag
   const n = pick(ev);
-  if (n) select(n); else { selected = null; inspect(null); makeLabelLayer(G); applyFocus(); }
+  if (n) select(n); else deselect();
 });
 
+/* selection history (Q back / E forward, like a browser); Q/E stay flight keys in fly mode */
+let hist = [], histIdx = -1, histNav = false;
+function pushHist(id) {
+  if (histNav) { histNav = false; return; }          // our own histTo call: don't re-push
+  if (hist[histIdx] === id) return;
+  hist = hist.slice(0, histIdx + 1);
+  hist.push(id);
+  histIdx = hist.length - 1;
+  if (hist.length > 100) { hist.shift(); histIdx--; }
+}
+function histStep(dir) {
+  const idx = histIdx + dir;
+  if (idx < 0 || idx >= hist.length) return;
+  histNav = true;
+  histIdx = idx;
+  const n = G && G.nodes[idMap.get(hist[idx])];
+  if (n) select(n);
+  if (histNav) histNav = false; // select may have been skipped (missing node)
+}
+function deselect() {
+  selected = null; hoverEl && (hoverEl.style.display = 'none');
+  inspect(null); makeLabelLayer(G); applyFocus();
+}
 function select(n) {
+  selected = n;
+  if (n) pushHist(n.id);
   selected = n;
   inspect(n);
   makeLabelLayer(G);
@@ -616,7 +649,7 @@ function applyFocus() {
   // selection is sticky: once a node is active, hover never overrides the highlight
   // (hover-only focus applies when nothing is selected)
   const src = (selected && !hidden.has(selected.id)) ? selected
-            : (hovered && !hidden.has(hovered.id)) ? hovered : null;
+            : (focusHover && !hidden.has(focusHover.id)) ? focusHover : null;
   focusActive = !!src;
   focusSet = new Set();
   if (src) {
@@ -905,6 +938,11 @@ function syncPanelButtons() {
   btnFolders.classList.toggle('on', !document.querySelector('.panel.left').classList.contains('hidden'));
   btnInspect.classList.toggle('on', !document.getElementById('inspect').classList.contains('hidden'));
 }
+/* ✕ in panel headers = close: inspect close also drops the selection */
+const inspX = document.querySelector('#inspect .p-x');
+const setX = document.querySelector('#settings .p-x');
+if (inspX) inspX.onclick = () => { deselect(); btnInspect.classList.remove('on'); };
+if (setX) setX.onclick = () => { settingsEl.classList.add('hidden'); gearBtn.classList.remove('on'); };
 syncPanelButtons();
 
 const SLIDER_DEFS = [
@@ -1636,7 +1674,122 @@ setInterval(() => {}, 1e9); // keep alive
 /* ---------- boot + loop ---------- */
 load().then(loadServerDefaults); // settings adopted after the graph exists
 
+/* ---------- camera follow + fly mode ---------- */
+let followId = null;
+const followLast = new THREE.Vector3();
+function followTick() {
+  if (!selected || fly.on) { followId = null; return; }
+  const i = idMap.get(selected.id);
+  if (i === undefined) { followId = null; return; }
+  const x = sim.pos[i*3], y = sim.pos[i*3+1], z = sim.pos[i*3+2];
+  if (followId !== selected.id) { followId = selected.id; followLast.set(x, y, z); return; }
+  ctl.target.x += x - followLast.x;
+  ctl.target.y += y - followLast.y;
+  ctl.target.z += z - followLast.z;
+  followLast.set(x, y, z);
+}
+
 let last = performance.now(), fpsT = 0, frames = 0;
+
+/* ---------- fly mode (F toggles, WASD + mouse-look) ---------- */
+const fly = { on: false };
+const keys = new Set();
+function flyDir() {
+  const sp = Math.sin(ctl.phi), cp = Math.cos(ctl.phi);
+  return {
+    fwd: [-sp * Math.sin(ctl.theta), -cp, -sp * Math.cos(ctl.theta)],
+    right: [Math.cos(ctl.theta), 0, -Math.sin(ctl.theta)]
+  };
+}
+function flyTick(dt) {
+  const { fwd, right } = flyDir();
+  const sp = 220 * (keys.has('shift') ? 3 : 1) * dt;
+  camera.position.x += (fwd[0] * (keys.has('w') ? 1 : 0) - fwd[0] * (keys.has('s') ? 1 : 0)
+                        + right[0] * (keys.has('d') ? 1 : 0) - right[0] * (keys.has('a') ? 1 : 0)) * sp;
+  camera.position.y += ((keys.has('w') ? 1 : 0) - (keys.has('s') ? 1 : 0)) * fwd[1] * sp
+                        + (keys.has('e') ? 1 : 0) * sp - (keys.has('q') ? 1 : 0) * sp;
+  camera.position.z += (fwd[2] * (keys.has('w') ? 1 : 0) - fwd[2] * (keys.has('s') ? 1 : 0)
+                        + right[2] * (keys.has('d') ? 1 : 0) - right[2] * (keys.has('a') ? 1 : 0)) * sp;
+  ctl.target.set(
+    camera.position.x + fwd[0] * ctl.dist,
+    camera.position.y + fwd[1] * ctl.dist,
+    camera.position.z + fwd[2] * ctl.dist
+  );
+}
+function enterFly() {
+  fly.on = true;
+  keys.clear();
+  softLook.x = softLook.y = null;
+  try {
+    const r = canvas.requestPointerLock();
+    if (r && r.catch) r.catch(() => {}); // headless/unsupported: rejection is fine
+  } catch (_e) {}
+  document.getElementById('fly-ind').classList.add('on');
+  hoverEl.style.display = 'none';
+}
+function exitFly() {
+  fly.on = false;
+  keys.clear();
+  if (document.pointerLockElement === canvas) document.exitPointerLock();
+  document.getElementById('fly-ind').classList.remove('on');
+}
+canvas.addEventListener('click', () => {
+  if (fly.on && document.pointerLockElement !== canvas) {
+    try {
+      const r = canvas.requestPointerLock();
+      if (r && r.catch) r.catch(() => {});
+    } catch (_e) {}
+  }
+});
+document.addEventListener('pointerlockchange', () => {
+  if (fly.on && document.pointerLockElement !== canvas) exitFly();
+});
+document.addEventListener('pointerlockerror', () => {
+  console.warn('[vg] pointer lock refused — steering in fallback mode (cursor visible)');
+});
+const softLook = { x: null, y: null };
+document.addEventListener('mousemove', (ev) => {
+  if (!fly.on) return;
+  // rotate the VIEW, never the position: theta/phi change and the next frame's
+  // flyTick() re-syncs target = camera + fwd·dist, so applyCamera() puts the
+  // camera back exactly where it was. (Calling applyCamera() here would orbit
+  // the camera around the old target — a positional swing, not a look-around.)
+  const turn = (dx, dy) => {
+    ctl.theta -= dx * 0.0032;
+    ctl.phi = Math.max(0.12, Math.min(Math.PI - 0.12, ctl.phi - dy * 0.0032));
+  };
+  if (document.pointerLockElement === canvas) {
+    softLook.x = softLook.y = null;
+    turn(ev.movementX, ev.movementY);
+  } else {
+    // fallback when the browser refuses pointer lock: steer from pointer deltas
+    // while the cursor is inside the window (movement stops at the window edge)
+    if (softLook.x === null) { softLook.x = ev.clientX; softLook.y = ev.clientY; return; }
+    const dx = ev.clientX - softLook.x, dy = ev.clientY - softLook.y;
+    softLook.x = ev.clientX; softLook.y = ev.clientY;
+    if (dx || dy) turn(dx, dy);
+  }
+});
+function isTyping(ev) {
+  const t = ev.target;
+  return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+addEventListener('keydown', (ev) => {
+  if (isTyping(ev)) return;
+  const k = ev.key.toLowerCase();
+  if (k === 'f' && !ev.repeat) { fly.on ? exitFly() : enterFly(); return; }
+  if (fly.on && k === 'escape') { exitFly(); return; }  // caught even though esc already unlocks
+  if (fly.on) {
+    if (k === 'shift') keys.add('shift');
+    else if ('wasdqe'.includes(k)) { keys.add(k); ev.preventDefault(); }
+    return;
+  }
+  if (k === 'escape' && selected) deselect();            // esc = unselect
+  else if (k === 'q' && !ev.repeat) histStep(-1);        // browser-style back
+  else if (k === 'e' && !ev.repeat) histStep(+1);        // ...and forward
+});
+addEventListener('keyup', (ev) => keys.delete(ev.key.toLowerCase()));
+addEventListener('blur', () => keys.clear());
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -1676,7 +1829,9 @@ function frame(now) {
       sp.material.opacity = (1 - phys.fade * t) * 0.95 * dimLabel;
       sp.visible = sp.material.opacity > 0.03;
     }
-    // static camera like Obsidian's graph — no idle drift
+    if (fly.on) flyTick(dt);
+    followTick();
+    // applyCamera is a pure function of (target, theta, phi, dist) — single camera path for orbit AND fly
     applyCamera();
   }
   frames++; fpsT += dt;
@@ -1705,6 +1860,29 @@ window.__vg = {
   get hovered() { return hovered; }, get focus() { return focusSet; },
   get manualHidden() { return manualHidden; },
   openNote: (n) => openNoteModal(n), get noteWindows() { return noteWins; },
+  /* bookmarks + camera/fly hooks (console + E2E tests) */
+  nodeCount: () => G ? G.nodes.length : 0,
+  getBookmarks: () => JSON.parse(JSON.stringify(BOOKMARKS)),
+  getBookmarkGroups: () => [...BGROUPS],
+  selectId: (id) => { const n = G && G.nodes[idMap.get(id)]; if (n) select(n); },
+  toggleBookmark: (id) => {
+    const i = BOOKMARKS.findIndex(q => q.id === id);
+    if (i >= 0) BOOKMARKS.splice(i, 1); else BOOKMARKS.push({ id, group: null });
+    saveBookmarks(); renderBookmarks(); makeLabelLayer(G);
+  },
+  moveBookmark: (id, group, beforeId) => { moveBookmark(id, group, beforeId); renderBookmarks(); },
+  addGroup: (name) => { if (name && !BGROUPS.includes(name)) { BGROUPS.push(name); saveBookmarks(); renderBookmarks(); } },
+  inspectOf: () => selected ? selected.id : null,
+  /* camera + fly state for tests/console */
+  flyState: () => ({ on: fly.on, locked: document.pointerLockElement === canvas }),
+  cam: () => ({ pos: camera.position.toArray(), target: ctl.target.toArray(), dist: ctl.dist }),
+  screenPosOf: (id) => {
+    const i = idMap ? idMap.get(id) : undefined;
+    if (!G || i === undefined || !sim) return null;
+    const v = new THREE.Vector3(sim.pos[i*3], sim.pos[i*3+1], sim.pos[i*3+2]).project(camera);
+    return { x: (v.x + 1) / 2 * innerWidth, y: (-v.y + 1) / 2 * innerHeight, behind: v.z > 1 };
+  },
+  reheat: () => reenergize(),
 };
 requestAnimationFrame(frame);
 
@@ -1816,21 +1994,5 @@ function hsvToRgb(h, s, v) {
   else [r, g, b] = [c, 0, x];
   return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
 }
-
-/* small console/E2E handle (read-only getters + a few actions) */
-window.VG = {
-  nodeCount: () => G ? G.nodes.length : 0,
-  getBookmarks: () => JSON.parse(JSON.stringify(BOOKMARKS)),
-  getBookmarkGroups: () => [...BGROUPS],
-  selectId: (id) => { const n = G.nodes[idMap.get(id)]; if (n) select(n); },
-  toggleBookmark: (id) => {
-    const i = BOOKMARKS.findIndex(q => q.id === id);
-    if (i >= 0) BOOKMARKS.splice(i, 1); else BOOKMARKS.push({ id, group: null });
-    saveBookmarks(); renderBookmarks(); makeLabelLayer(G);
-  },
-  moveBookmark: (id, group, beforeId) => { moveBookmark(id, group, beforeId); renderBookmarks(); },
-  addGroup: (name) => { if (name && !BGROUPS.includes(name)) { BGROUPS.push(name); saveBookmarks(); renderBookmarks(); } },
-  inspectOf: () => selected ? selected.id : null,
-};
 
 })();
